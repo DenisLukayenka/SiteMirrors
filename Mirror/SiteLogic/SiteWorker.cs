@@ -28,6 +28,7 @@ namespace SiteLogic
         public async Task CreateLocalCopy()
         {
             await CreateLocalCopy(_uriAddress, _depth);
+            int bb = 0;
         }
 
         private async Task CreateLocalCopy(Uri uriAddress, int depth)
@@ -44,9 +45,9 @@ namespace SiteLogic
             foreach (var link in links)
             {
                 await CreateLocalCopy(link, depth - 1);
-
-                Console.WriteLine($"CreateLocalCopy: {depth} --- {uriAddress}");
             }
+
+            await WriteToFile(uriAddress);
         }
 
         private async Task WriteToFile(Uri uriAddress)
@@ -61,54 +62,107 @@ namespace SiteLogic
 
                     CQ parser = CQ.Create(html);
 
-                    var directoryInfo = new DirectoryInfo($"{_directoryPath}{uriAddress.Host}{uriAddress.AbsolutePath.Replace('/', '\\')}");
+                    await SaveFileAsync(uriAddress, await messageResponse.Content.ReadAsStreamAsync());
 
-                    if (!directoryInfo.Exists)
+                    await DownloadImagesAsync(client, html, uriAddress);
+                }
+            }
+        }
+
+        private async Task SaveFileAsync(Uri uriAddress, Stream writer)
+        {
+            string dirPath = "";
+            string name = "";
+
+            UriBuilder uriBuilder = new UriBuilder(uriAddress);
+
+            dirPath = Path.GetDirectoryName(uriBuilder.Path);
+            name = Path.GetFileName(uriAddress.AbsolutePath);
+
+            string pathToFolder = Path.Combine(_directoryPath, uriAddress.Host, dirPath.TrimStart('\\'));
+            if (!Directory.Exists(pathToFolder))
+            {
+                Directory.CreateDirectory(pathToFolder);
+            }
+
+            byte[] buffer = new byte[writer.Length];
+            await writer.ReadAsync(buffer, 0, buffer.Length);
+
+            try
+            {
+                using (var stream = new FileStream(Path.Combine(pathToFolder, name.TrimStart('\\')), FileMode.Create))
+                {
+                    await stream.WriteAsync(buffer, 0, buffer.Length);
+                }
+            }
+            catch
+            {
+                int b = 10;
+            }
+            
+        }
+
+        private async Task DownloadImagesAsync(HttpClient client, string html, Uri uriAddress)
+        {
+            CQ parser = CQ.Create(html);
+
+            foreach (var image in parser.Find("img"))
+            {
+                string strLink = image.GetAttribute("src");
+
+                if (!_addedUrls.Contains(strLink))
+                {
+                    Console.WriteLine(strLink);
+
+                    _addedUrls.Add(strLink);
+
+                    string imageLinkPath = "";
+                    string imageDirPath = "";
+                    string imageName = "";
+
+                    if (Uri.IsWellFormedUriString(strLink, UriKind.Relative))
                     {
-                        Directory.CreateDirectory(directoryInfo.FullName);
+                        imageDirPath = Path.GetDirectoryName(strLink);
+
+                        imageLinkPath = imageDirPath.Length != 0 ? imageDirPath.Replace('\\', '/') : "/";
+                    }
+                    else if (Uri.IsWellFormedUriString(strLink, UriKind.Absolute))
+                    {
+                        var ub = new UriBuilder(strLink);
+
+                        imageDirPath = Path.GetDirectoryName(ub.Path);
+                        imageLinkPath = imageDirPath.Length != 0 ? imageDirPath.Replace('\\', '/') : "/";
+                    }
+                    else
+                    {
+                        continue;
                     }
 
-                    string name = NormalizeFileName($"{parser.Find("title").Text()}");
+                    imageName = Path.GetFileName(strLink);
 
-                    using (var writer = new StreamWriter($"{directoryInfo.FullName}{name}"))
+                    string imagePath = Path.Combine(_directoryPath, uriAddress.Host, imageDirPath);
+
+                    UriBuilder uriBuilder = new UriBuilder(uriAddress.Scheme,
+                        uriAddress.Host,
+                        uriAddress.Port,
+                        $"{imageLinkPath}/{imageName}");
+
+                    var imageMessage = await client.GetAsync(uriBuilder.Uri);
+
+                    if (imageMessage.IsSuccessStatusCode)
                     {
-                        await writer.WriteAsync(html);
-                    }
-
-                    foreach (var image in parser.Find("img"))
-                    {
-                        string imageLink = image.GetAttribute("src");
-
-                        int lastIndex = imageLink.LastIndexOf('/');
-
-                        string imageDirPath = imageLink.Substring(0, lastIndex);
-                        imageLink = imageLink.Substring(lastIndex);
-
-                        if(Uri.TryCreate(imageDirPath, UriKind.Absolute, out Uri uri))
-                        {
-                            Uri cc = new Uri(uriAddress.Scheme + "://" + uriAddress.Host);
-
-                            var aa = cc.MakeRelativeUri(uri);
-                            imageDirPath = $"/{aa.ToString()}/";
-                        }
-
-                        string imagePath = $"{_directoryPath}{uriAddress.Host}{imageDirPath.Replace('/', '\\')}";
-                        var dirInfo = new DirectoryInfo(imagePath);
+                        var dirInfo = new DirectoryInfo(Path.Combine(_directoryPath, uriAddress.Host, imagePath.TrimStart('\\')));
 
                         if (!dirInfo.Exists)
                         {
                             Directory.CreateDirectory(dirInfo.FullName + "\\");
                         }
 
-                        var imageMessage = await client.GetAsync($"{uriAddress.Scheme}://{uriAddress.Host}{imageDirPath}{imageLink}");
-
-                        if (imageMessage.IsSuccessStatusCode)
+                        using (var writer = new FileStream(Path.Combine(dirInfo.FullName, imageName),
+                            FileMode.Create))
                         {
-                            using (var writer = new FileStream($"{dirInfo.FullName}{imageLink}", FileMode.Create))
-                            {
-                                var buffer = await imageMessage.Content.ReadAsByteArrayAsync();
-                                await writer.WriteAsync(buffer, 0, buffer.Length);
-                            }
+                            var buffer = await imageMessage.Content.ReadAsByteArrayAsync();
+                            await writer.WriteAsync(buffer, 0, buffer.Length);
                         }
                     }
                 }
@@ -179,8 +233,6 @@ namespace SiteLogic
                 .Replace('|', '_').Replace(':', '_')
                 .Replace('?', '_').Replace('/', '_')
                 .Replace('\\', '_');
-
-            name = string.Concat(name, ".html");
 
             if (name.Length > 255)
             {
