@@ -14,9 +14,9 @@ namespace Mirror
     {
         public static void Main(string[] args)
         {
-            SiteWorker worker = new SiteWorker("https://pornhub.com/", @"E:\Epam\epam-lab\Sites\", 1);
+            var worker = new PageWorker("https://gidonline.io/", @"E:\Epam\epam-lab\Sites\", 2);
 
-            Task.WaitAll(worker.CreateLocalCopy());
+            Task.WaitAll(worker.CreateCopyAsync());
 
             Console.WriteLine("Completed!");
             Console.ReadKey();
