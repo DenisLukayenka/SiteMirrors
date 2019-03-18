@@ -14,7 +14,12 @@ namespace Mirror
     {
         public static void Main(string[] args)
         {
-            var worker = new PageWorker("https://gidonline.io/", @"E:\Epam\epam-lab\Sites\", 2);
+            var worker = new PageWorker(
+                "https://gidonline.io/", 
+                @"E:\Epam\epam-lab\Sites\", 
+                2, 
+                DomainRestriction.NotHigherCurrentUrl,
+                new List<string>{".png"});
 
             Task.WaitAll(worker.CreateCopyAsync());
 
