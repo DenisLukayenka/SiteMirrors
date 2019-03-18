@@ -7,29 +7,33 @@ using System.Text;
 using System.Threading.Tasks;
 using CsQuery;
 using CsQuery.Implementation;
+using SiteLogic.Domains;
 
 namespace SiteLogic
 {
     public class PageWorker
     {
-        private Uri _baseUri;
-        private string _directoryPath;
-        private int _depth;
-        private Dictionary<string, int> _linksDepth;
+        private readonly Uri _baseUri;
+        private readonly string _directoryPath;
+        private readonly int _depth;
+        private readonly Dictionary<string, int> _linksDepth;
 
-        private DomainRestriction _currentRestriction;
-        private List<string> _possibleImageTypes;
+        private readonly IDomainChecker _domainChecker;
+        private readonly FileWorker _fileWorker;
+        private readonly HttpRequestReader _httpReader;
 
-        public PageWorker(string uri, string dirPath, int depth, DomainRestriction restriction, List<string> imageTypes)
+        public PageWorker(string uri, string dirPath, int depth, IDomainChecker checker, ICollection<string> imageTypes)
         {
             _baseUri = new Uri(uri);
             _directoryPath = Path.Combine(dirPath, _baseUri.Host);
             _depth = depth;
-            _currentRestriction = restriction;
-            _possibleImageTypes = imageTypes;
+            _domainChecker = checker;
 
             _linksDepth = new Dictionary<string, int>();
             _linksDepth.Add(_baseUri.AbsolutePath, 0);
+
+            _fileWorker = new FileWorker(imageTypes);
+            _httpReader = new HttpRequestReader();
         }
 
         public async Task CreateCopyAsync()
@@ -41,7 +45,6 @@ namespace SiteLogic
         {
             if (depth == _depth)
             {
-                Console.WriteLine($"Write: {uri.AbsoluteUri}");
                 await SaveFileAsync(uri);
                 return;
             }
@@ -54,7 +57,6 @@ namespace SiteLogic
             }
 
             await SaveFileAsync(uri);
-            Console.WriteLine($"Write: {uri.AbsoluteUri}");
         }
 
         private Uri TryCreateUri(string uriString)
@@ -76,105 +78,24 @@ namespace SiteLogic
 
         private async Task SaveFileAsync(Uri uri)
         {
-            using (HttpClient client = new HttpClient())
+            var buffer = await _httpReader.ReadData(uri);
+
+            if (buffer != null)
             {
-                var message = await client.GetAsync(uri);
+                string dirPath = UriParser.GetCorrectDirectoryPath(uri, _directoryPath);
+                string fileName = UriParser.GetCorrectName(uri);
+                string fullPath = Path.Combine(dirPath, fileName.TrimStart('\\'));
 
-                if (message.IsSuccessStatusCode)
-                {
-                    var buffer = await message.Content.ReadAsByteArrayAsync();
+                await _fileWorker.SaveToFileAsync(fullPath, buffer);
 
-                    string dirPath = CreatePathDirectoryToFile(uri);
-                    string fileName = CreateCorrectFileName(uri);
-
-                    dirPath = string.IsNullOrEmpty(dirPath) ? "\\" : dirPath;
-                    fileName = string.IsNullOrEmpty(fileName) ? "index.html" : fileName;
-
-                    string extension = Path.GetExtension(fileName);
-                    if (string.IsNullOrEmpty(extension))
-                    {
-                        throw new NullReferenceException($"{nameof(extension)} is empty.");
-                    }
-
-                    if (_possibleImageTypes is null 
-                        || _possibleImageTypes.Count == 0 
-                        || _possibleImageTypes.Contains(extension))
-                    {
-                        string fullPath = Path.Combine(dirPath, fileName.TrimStart('\\'));
-
-                        using (var writer = new FileStream(fullPath, FileMode.Create))
-                        {
-                            await writer.WriteAsync(buffer, 0, buffer.Length);
-                        }
-                    }
-                }
+                Console.WriteLine($"Write {uri.AbsoluteUri}");
+                Console.Write("> ");
             }
-        }
-
-        private string CreatePathDirectoryToFile(Uri uri)
-        {
-            string resultPath = _directoryPath;
-
-            var badPathSymbols = Path.GetInvalidPathChars();
-
-            string uriPath = uri.AbsolutePath;
-            foreach (var badPathSymbol in badPathSymbols)
-            {
-                uriPath = uriPath.Replace(badPathSymbol.ToString(), "");
-            }
-
-            int length = resultPath.Length + uriPath.Length;
-            if (length > 240)
-            {
-                uriPath = uriPath.Substring(0, 240 - resultPath.Length);
-            }
-
-            uriPath = Path.GetDirectoryName(uriPath);
-            uriPath = string.IsNullOrEmpty(uriPath) ? "\\" : uriPath;
-
-            resultPath = Path.Combine(resultPath, uriPath.TrimStart('\\'));
-
-            if (!string.IsNullOrEmpty(resultPath) && !Directory.Exists(resultPath))
-            {
-                Directory.CreateDirectory(resultPath);
-            }
-
-            return resultPath;
-        }
-
-        private string CreateCorrectFileName(Uri uri)
-        {
-            string uriPath = uri.AbsolutePath;
-
-            string uriFileName = Path.GetFileName(uriPath);
-
-            if (string.IsNullOrEmpty(uriFileName))
-            {
-                return "index.html";
-            }
-
-            var badNameSymbols = Path.GetInvalidFileNameChars();
-            foreach (var symbol in badNameSymbols)
-            {
-                uriFileName = uriFileName.Replace(symbol.ToString(), "");
-            }
-
-            if (uriFileName.Length > 240)
-            {
-                string name = Path.GetFileNameWithoutExtension(uriFileName);
-                string extension = Path.GetExtension(uriFileName);
-
-                name = name.Substring(0, 240 - extension.Length);
-
-                uriFileName = $"{name}{extension}";
-            }
-
-            return uriFileName;
         }
 
         private async Task<IEnumerable<Uri>> GetUrlsAsync(Uri uri, int depth)
         {
-            string htmlPage = await GetHtmlPageAsync(uri);
+            string htmlPage = await _httpReader.ReadHtmlPage(uri);
             List<Uri> links = new List<Uri>();
 
             if (htmlPage != null)
@@ -189,24 +110,6 @@ namespace SiteLogic
             }
 
             return links;
-        }
-
-
-        private async Task<string> GetHtmlPageAsync(Uri uri)
-        {
-            string htmlPage = null;
-
-            using (HttpClient client = new HttpClient())
-            {
-                var message = await client.GetAsync(uri);
-
-                if (message.IsSuccessStatusCode)
-                {
-                    htmlPage = await message.Content.ReadAsStringAsync();
-                }
-            }
-
-            return htmlPage;
         }
 
         private async Task FindLinksRecursiveAsync(IDomElement element, int depth, ICollection<Uri> links)
@@ -269,59 +172,17 @@ namespace SiteLogic
 
             Uri uri = TryCreateUri(link);
 
-            if (uri != null && (uri.Scheme == "http" || uri.Scheme == "https"))
+            if (uri != null && (uri.Scheme == "http" || uri.Scheme == "https") && _domainChecker.CheckDomain(_baseUri, uri))
             {
                 if (!_linksDepth.ContainsKey(uri.AbsolutePath))
                 {
-                    switch (_currentRestriction)
-                    {
-                        case DomainRestriction.CurrentDomain:
-                            if (uri.Host == _baseUri.Host)
-                            {
-                                _linksDepth.Add(uri.AbsolutePath, depth);
-                                links.Add(uri);
-                            }
-                            break;
-
-                        case DomainRestriction.NoRestriction:
-                            _linksDepth.Add(uri.AbsolutePath, depth);
-                            links.Add(uri);
-                            break;
-
-                        case DomainRestriction.NotHigherCurrentUrl:
-                            if (_baseUri.IsBaseOf(uri))
-                            {
-                                _linksDepth.Add(uri.AbsolutePath, depth);
-                                links.Add(uri);
-                            }
-                            break;
-                    }
+                    _linksDepth.Add(uri.AbsolutePath, depth);
+                    links.Add(uri);
                 }
                 else if (_linksDepth[uri.AbsolutePath] > depth)
                 {
-                    switch (_currentRestriction)
-                    {
-                        case DomainRestriction.CurrentDomain:
-                            if (uri.Host == _baseUri.Host)
-                            {
-                                _linksDepth[uri.AbsolutePath] = depth;
-                                links.Add(uri);
-                            }
-                            break;
-
-                        case DomainRestriction.NoRestriction:
-                            _linksDepth[uri.AbsolutePath] = depth;
-                            links.Add(uri);
-                            break;
-
-                        case DomainRestriction.NotHigherCurrentUrl:
-                            if (_baseUri.IsBaseOf(uri))
-                            {
-                                _linksDepth[uri.AbsolutePath] = depth;
-                                links.Add(uri);
-                            }
-                            break;
-                    }
+                    _linksDepth[uri.AbsolutePath] = depth;
+                    links.Add(uri);
                 }
             }
         }
