@@ -16,13 +16,14 @@ namespace SiteLogic
         private string _directoryPath;
         private int _depth;
         private Dictionary<string, int> _linksDepth;
-        private int index = 0;
+        private DomainRestriction _currentRestriction;
 
-        public PageWorker(string uri, string dirPath, int depth)
+        public PageWorker(string uri, string dirPath, int depth, DomainRestriction restriction)
         {
             _baseUri = new Uri(uri);
             _directoryPath = Path.Combine(dirPath, _baseUri.Host);
             _depth = depth;
+            _currentRestriction = restriction;
 
             _linksDepth = new Dictionary<string, int>();
             _linksDepth.Add(_baseUri.AbsolutePath, 0);
@@ -30,20 +31,14 @@ namespace SiteLogic
 
         public async Task CreateCopyAsync()
         {
-            CreateCopyAsync(_baseUri, 0).Wait();
-
-            index = 0;
-            foreach (var i in _linksDepth)
-            {
-                Console.WriteLine($"{index++}.  Write(depth {i.Value}): {i.Key}");
-            }
+            await CreateCopyAsync(_baseUri, 0);
         }
 
         private async Task CreateCopyAsync(Uri uri, int depth)
         {
             if (depth == _depth)
             {
-                Console.WriteLine($"{index++}.  Write{depth}: {uri.AbsoluteUri ?? uri.AbsolutePath}");
+                Console.WriteLine($"Write: {uri.AbsoluteUri}");
                 await SaveFileAsync(uri);
                 return;
             }
@@ -55,8 +50,8 @@ namespace SiteLogic
                 await CreateCopyAsync(link, depth + 1);
             }
 
-            Console.WriteLine($"{index++}.  Write{depth}: {uri.AbsoluteUri ?? uri.AbsolutePath}");
             await SaveFileAsync(uri);
+            Console.WriteLine($"Write: {uri.AbsoluteUri}");
         }
 
         private Uri TryCreateUri(string uriString)
@@ -200,12 +195,6 @@ namespace SiteLogic
             return htmlPage;
         }
 
-        private async Task SaveToFile(Uri uri)
-        {
-            byte[] buffer = null;
-
-        }
-
         private async Task FindLinksRecursiveAsync(IDomElement element, int depth, ICollection<Uri> links)
         {
             if (element is null)
@@ -270,13 +259,55 @@ namespace SiteLogic
             {
                 if (!_linksDepth.ContainsKey(uri.AbsolutePath))
                 {
-                    _linksDepth.Add(uri.AbsolutePath, depth);
-                    links.Add(uri);
+                    switch (_currentRestriction)
+                    {
+                        case DomainRestriction.CurrentDomain:
+                            if (uri.Host == _baseUri.Host)
+                            {
+                                _linksDepth.Add(uri.AbsolutePath, depth);
+                                links.Add(uri);
+                            }
+                            break;
+
+                        case DomainRestriction.NoRestriction:
+                            _linksDepth.Add(uri.AbsolutePath, depth);
+                            links.Add(uri);
+                            break;
+
+                        case DomainRestriction.NotHigherCurrentUrl:
+                            if (_baseUri.IsBaseOf(uri))
+                            {
+                                _linksDepth.Add(uri.AbsolutePath, depth);
+                                links.Add(uri);
+                            }
+                            break;
+                    }
                 }
                 else if (_linksDepth[uri.AbsolutePath] > depth)
                 {
-                    _linksDepth[uri.AbsolutePath] = depth;
-                    links.Add(uri);
+                    switch (_currentRestriction)
+                    {
+                        case DomainRestriction.CurrentDomain:
+                            if (uri.Host == _baseUri.Host)
+                            {
+                                _linksDepth[uri.AbsolutePath] = depth;
+                                links.Add(uri);
+                            }
+                            break;
+
+                        case DomainRestriction.NoRestriction:
+                            _linksDepth[uri.AbsolutePath] = depth;
+                            links.Add(uri);
+                            break;
+
+                        case DomainRestriction.NotHigherCurrentUrl:
+                            if (_baseUri.IsBaseOf(uri))
+                            {
+                                _linksDepth[uri.AbsolutePath] = depth;
+                                links.Add(uri);
+                            }
+                            break;
+                    }
                 }
             }
         }
