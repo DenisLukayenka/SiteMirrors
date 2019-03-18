@@ -15,17 +15,43 @@ namespace Mirror
     {
         public static void Main(string[] args)
         {
+            while (true)
+            {
+                Console.Write("> ");
+                string request = Console.ReadLine();
+                var worker = CreatePageWorker(request);
+
+                if (worker != null)
+                {
+                    var task = Task.WhenAll(worker.CreateCopyAsync());
+                    task.ContinueWith(t =>
+                    {
+                        Console.WriteLine("Completed!");
+                        Console.Write("> ");
+                    });
+                }
+            }
+
+            Console.ReadKey();
+        }
+
+        public static PageWorker CreatePageWorker(string request)
+        {
+            if (string.IsNullOrWhiteSpace(request))
+            {
+                return null;
+            }
+
+            var requestParams = request.Split(' ');
+
             var worker = new PageWorker(
-                "https://gidonline.io/new/", 
-                @"E:\Epam\epam-lab\Sites\", 
-                1, 
-                new HigherUrlDomainChecker(), 
+                requestParams[0], 
+                requestParams[1], 
+                int.Parse(requestParams[2]), 
+                new NoRestrictionDomainChecker(), 
                 null);
 
-            Task.WaitAll(worker.CreateCopyAsync());
-
-            Console.WriteLine("Completed!");
-            Console.ReadKey();
+            return worker;
         }
     }
 }

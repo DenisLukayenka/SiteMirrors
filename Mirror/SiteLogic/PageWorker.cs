@@ -87,7 +87,9 @@ namespace SiteLogic
                 string fullPath = Path.Combine(dirPath, fileName.TrimStart('\\'));
 
                 await _fileWorker.SaveToFileAsync(fullPath, buffer);
+
                 Console.WriteLine($"Write {uri.AbsoluteUri}");
+                Console.Write("> ");
             }
         }
 
@@ -174,17 +176,13 @@ namespace SiteLogic
             {
                 if (!_linksDepth.ContainsKey(uri.AbsolutePath))
                 {
-
                     _linksDepth.Add(uri.AbsolutePath, depth);
                     links.Add(uri);
-
                 }
                 else if (_linksDepth[uri.AbsolutePath] > depth)
                 {
-
                     _linksDepth[uri.AbsolutePath] = depth;
                     links.Add(uri);
-
                 }
             }
         }
