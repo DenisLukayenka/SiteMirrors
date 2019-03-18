@@ -9,7 +9,7 @@ namespace SiteLogic
 {
     public class ExtensionsChecker
     {
-        private ICollection<string> _possibleExtensions;
+        private readonly ICollection<string> _possibleExtensions;
 
         public ExtensionsChecker(ICollection<string> possibleExtensions)
         {

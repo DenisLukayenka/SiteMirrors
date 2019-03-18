@@ -7,6 +7,7 @@ using System.Security.Policy;
 using System.Text;
 using System.Threading.Tasks;
 using SiteLogic;
+using SiteLogic.Domains;
 
 namespace Mirror
 {
@@ -15,10 +16,10 @@ namespace Mirror
         public static void Main(string[] args)
         {
             var worker = new PageWorker(
-                "https://gidonline.io/", 
+                "https://gidonline.io/new/", 
                 @"E:\Epam\epam-lab\Sites\", 
                 1, 
-                DomainRestriction.NoRestriction,
+                new HigherUrlDomainChecker(), 
                 null);
 
             Task.WaitAll(worker.CreateCopyAsync());

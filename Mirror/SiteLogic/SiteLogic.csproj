@@ -44,9 +44,14 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="DomainRestriction.cs" />
+    <Compile Include="Domains\DomainRestriction.cs" />
+    <Compile Include="Domains\CurrentDomainChecker.cs" />
+    <Compile Include="Domains\HigherUrlDomainChecker.cs" />
+    <Compile Include="Domains\IDomainChecker.cs" />
+    <Compile Include="Domains\NoRestrictionDomainChecker.cs" />
     <Compile Include="ExtensionsChecker.cs" />
     <Compile Include="FileWorker.cs" />
+    <Compile Include="HttpRequestReader.cs" />
     <Compile Include="PageWorker.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="UriParser.cs" />
