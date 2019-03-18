@@ -84,8 +84,8 @@ namespace SiteLogic
                 {
                     var buffer = await message.Content.ReadAsByteArrayAsync();
 
-                    string dirPath = CreatePathDirectoryToFile(uri);
-                    string fileName = CreateCorrectFileName(uri);
+                    string dirPath = UriParser.GetCorrectDirectoryPath(uri, _directoryPath);
+                    string fileName = UriParser.GetCorrectName(uri);
 
                     dirPath = string.IsNullOrEmpty(dirPath) ? "\\" : dirPath;
                     fileName = string.IsNullOrEmpty(fileName) ? "index.html" : fileName;
@@ -111,67 +111,6 @@ namespace SiteLogic
             }
         }
 
-        private string CreatePathDirectoryToFile(Uri uri)
-        {
-            string resultPath = _directoryPath;
-
-            var badPathSymbols = Path.GetInvalidPathChars();
-
-            string uriPath = uri.AbsolutePath;
-            foreach (var badPathSymbol in badPathSymbols)
-            {
-                uriPath = uriPath.Replace(badPathSymbol.ToString(), "");
-            }
-
-            int length = resultPath.Length + uriPath.Length;
-            if (length > 240)
-            {
-                uriPath = uriPath.Substring(0, 240 - resultPath.Length);
-            }
-
-            uriPath = Path.GetDirectoryName(uriPath);
-            uriPath = string.IsNullOrEmpty(uriPath) ? "\\" : uriPath;
-
-            resultPath = Path.Combine(resultPath, uriPath.TrimStart('\\'));
-
-            if (!string.IsNullOrEmpty(resultPath) && !Directory.Exists(resultPath))
-            {
-                Directory.CreateDirectory(resultPath);
-            }
-
-            return resultPath;
-        }
-
-        private string CreateCorrectFileName(Uri uri)
-        {
-            string uriPath = uri.AbsolutePath;
-
-            string uriFileName = Path.GetFileName(uriPath);
-
-            if (string.IsNullOrEmpty(uriFileName))
-            {
-                return "index.html";
-            }
-
-            var badNameSymbols = Path.GetInvalidFileNameChars();
-            foreach (var symbol in badNameSymbols)
-            {
-                uriFileName = uriFileName.Replace(symbol.ToString(), "");
-            }
-
-            if (uriFileName.Length > 240)
-            {
-                string name = Path.GetFileNameWithoutExtension(uriFileName);
-                string extension = Path.GetExtension(uriFileName);
-
-                name = name.Substring(0, 240 - extension.Length);
-
-                uriFileName = $"{name}{extension}";
-            }
-
-            return uriFileName;
-        }
-
         private async Task<IEnumerable<Uri>> GetUrlsAsync(Uri uri, int depth)
         {
             string htmlPage = await GetHtmlPageAsync(uri);
@@ -190,7 +129,6 @@ namespace SiteLogic
 
             return links;
         }
-
 
         private async Task<string> GetHtmlPageAsync(Uri uri)
         {

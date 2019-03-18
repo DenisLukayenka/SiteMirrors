@@ -17,9 +17,9 @@ namespace Mirror
             var worker = new PageWorker(
                 "https://gidonline.io/", 
                 @"E:\Epam\epam-lab\Sites\", 
-                2, 
-                DomainRestriction.NotHigherCurrentUrl,
-                new List<string>{".png"});
+                1, 
+                DomainRestriction.NoRestriction,
+                null);
 
             Task.WaitAll(worker.CreateCopyAsync());
 
