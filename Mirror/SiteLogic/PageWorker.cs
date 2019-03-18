@@ -12,24 +12,25 @@ namespace SiteLogic
 {
     public class PageWorker
     {
-        private Uri _baseUri;
-        private string _directoryPath;
-        private int _depth;
-        private Dictionary<string, int> _linksDepth;
+        private readonly Uri _baseUri;
+        private readonly string _directoryPath;
+        private readonly int _depth;
+        private readonly Dictionary<string, int> _linksDepth;
 
-        private DomainRestriction _currentRestriction;
-        private List<string> _possibleImageTypes;
+        private readonly DomainRestriction _currentRestriction;
+        private FileWorker _fileWorker;
 
-        public PageWorker(string uri, string dirPath, int depth, DomainRestriction restriction, List<string> imageTypes)
+        public PageWorker(string uri, string dirPath, int depth, DomainRestriction restriction, ICollection<string> imageTypes)
         {
             _baseUri = new Uri(uri);
             _directoryPath = Path.Combine(dirPath, _baseUri.Host);
             _depth = depth;
             _currentRestriction = restriction;
-            _possibleImageTypes = imageTypes;
 
             _linksDepth = new Dictionary<string, int>();
             _linksDepth.Add(_baseUri.AbsolutePath, 0);
+
+            _fileWorker = new FileWorker(imageTypes);
         }
 
         public async Task CreateCopyAsync()
@@ -41,7 +42,6 @@ namespace SiteLogic
         {
             if (depth == _depth)
             {
-                Console.WriteLine($"Write: {uri.AbsoluteUri}");
                 await SaveFileAsync(uri);
                 return;
             }
@@ -54,7 +54,6 @@ namespace SiteLogic
             }
 
             await SaveFileAsync(uri);
-            Console.WriteLine($"Write: {uri.AbsoluteUri}");
         }
 
         private Uri TryCreateUri(string uriString)
@@ -86,27 +85,10 @@ namespace SiteLogic
 
                     string dirPath = UriParser.GetCorrectDirectoryPath(uri, _directoryPath);
                     string fileName = UriParser.GetCorrectName(uri);
+                    string fullPath = Path.Combine(dirPath, fileName.TrimStart('\\'));
 
-                    dirPath = string.IsNullOrEmpty(dirPath) ? "\\" : dirPath;
-                    fileName = string.IsNullOrEmpty(fileName) ? "index.html" : fileName;
-
-                    string extension = Path.GetExtension(fileName);
-                    if (string.IsNullOrEmpty(extension))
-                    {
-                        throw new NullReferenceException($"{nameof(extension)} is empty.");
-                    }
-
-                    if (_possibleImageTypes is null 
-                        || _possibleImageTypes.Count == 0 
-                        || _possibleImageTypes.Contains(extension))
-                    {
-                        string fullPath = Path.Combine(dirPath, fileName.TrimStart('\\'));
-
-                        using (var writer = new FileStream(fullPath, FileMode.Create))
-                        {
-                            await writer.WriteAsync(buffer, 0, buffer.Length);
-                        }
-                    }
+                    await _fileWorker.SaveToFileAsync(fullPath, buffer);
+                    Console.WriteLine($"Write {uri.AbsoluteUri}");
                 }
             }
         }

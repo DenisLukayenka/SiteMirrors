@@ -45,6 +45,8 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="DomainRestriction.cs" />
+    <Compile Include="ExtensionsChecker.cs" />
+    <Compile Include="FileWorker.cs" />
     <Compile Include="PageWorker.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="UriParser.cs" />
