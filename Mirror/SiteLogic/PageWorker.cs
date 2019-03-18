@@ -17,13 +17,15 @@ namespace SiteLogic
         private int _depth;
         private Dictionary<string, int> _linksDepth;
         private DomainRestriction _currentRestriction;
+        private List<string> _possibleImageTypes;
 
-        public PageWorker(string uri, string dirPath, int depth, DomainRestriction restriction)
+        public PageWorker(string uri, string dirPath, int depth, DomainRestriction restriction, List<string> imageTypes)
         {
             _baseUri = new Uri(uri);
             _directoryPath = Path.Combine(dirPath, _baseUri.Host);
             _depth = depth;
             _currentRestriction = restriction;
+            _possibleImageTypes = imageTypes;
 
             _linksDepth = new Dictionary<string, int>();
             _linksDepth.Add(_baseUri.AbsolutePath, 0);
@@ -87,11 +89,22 @@ namespace SiteLogic
                     dirPath = string.IsNullOrEmpty(dirPath) ? "\\" : dirPath;
                     fileName = string.IsNullOrEmpty(fileName) ? "index.html" : fileName;
 
-                    string fullPath = Path.Combine(dirPath, fileName.TrimStart('\\'));
-
-                    using (var writer = new FileStream(fullPath, FileMode.Create))
+                    string extension = Path.GetExtension(fileName);
+                    if (string.IsNullOrEmpty(extension))
                     {
-                        await writer.WriteAsync(buffer, 0, buffer.Length);
+                        throw new NullReferenceException($"{nameof(extension)} is empty.");
+                    }
+
+                    if (_possibleImageTypes is null 
+                        || _possibleImageTypes.Count == 0 
+                        || _possibleImageTypes.Contains(extension))
+                    {
+                        string fullPath = Path.Combine(dirPath, fileName.TrimStart('\\'));
+
+                        using (var writer = new FileStream(fullPath, FileMode.Create))
+                        {
+                            await writer.WriteAsync(buffer, 0, buffer.Length);
+                        }
                     }
                 }
             }
